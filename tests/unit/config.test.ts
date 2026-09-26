@@ -37,6 +37,18 @@ describe("getConfig", () => {
     expect(getConfig().DATABASE_URL).toBeUndefined();
   });
 
+  it("ignores a short IP_HASH_SECRET when there is no database", () => {
+    Object.assign(process.env, { DATABASE_URL: "", IP_HASH_SECRET: "short" });
+    resetConfigForTests();
+    expect(() => getConfig()).not.toThrow();
+  });
+
+  it("requires a 16+ character IP_HASH_SECRET with a database", () => {
+    Object.assign(process.env, { DATABASE_URL: "postgres://u:p@db/x", IP_HASH_SECRET: "short" });
+    resetConfigForTests();
+    expect(() => getConfig()).toThrow(/at least 16 characters/);
+  });
+
   it("requires IP_HASH_SECRET once a database is configured", () => {
     Object.assign(process.env, { DATABASE_URL: "postgres://u:p@db/x", IP_HASH_SECRET: "" });
     resetConfigForTests();

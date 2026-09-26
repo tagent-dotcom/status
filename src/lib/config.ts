@@ -34,7 +34,8 @@ const schema = z.object({
   // Defaults to true on Vercel, whose edge always sets these headers.
   TRUST_PROXY_HEADERS: bool.optional(),
   // Secret used to HMAC client IPs before they are stored. Required when a database is used.
-  IP_HASH_SECRET: z.string().min(16, "IP_HASH_SECRET must be at least 16 characters").optional(),
+  // Length is checked below only when a database is configured; it is unused otherwise.
+  IP_HASH_SECRET: z.string().optional(),
 
   // Skip the server-side DNS resolution safety check. Only for tests with fake hostnames.
   UNSAFE_SKIP_DNS_CHECK: bool.default(false),
@@ -44,6 +45,8 @@ const refined = schema
   .superRefine((c, ctx) => {
     if (c.DATABASE_URL && !c.IP_HASH_SECRET) {
       ctx.addIssue({ code: "custom", path: ["IP_HASH_SECRET"], message: "IP_HASH_SECRET is required when DATABASE_URL is set" });
+    } else if (c.DATABASE_URL && c.IP_HASH_SECRET && c.IP_HASH_SECRET.length < 16) {
+      ctx.addIssue({ code: "custom", path: ["IP_HASH_SECRET"], message: "IP_HASH_SECRET must be at least 16 characters" });
     }
   })
   .transform((c) => ({ ...c, TRUST_PROXY_HEADERS: c.TRUST_PROXY_HEADERS ?? process.env.VERCEL === "1" }));
