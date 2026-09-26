@@ -77,6 +77,7 @@ interface StoredMeasurement {
   hostname: string;
   probes: ProbeOverrides[];
   createdAt: number;
+  measurementOptions: unknown;
 }
 
 export class FakeNetwork {
@@ -88,7 +89,7 @@ export class FakeNetwork {
   /** Force the next create to fail with this HTTP status. */
   failNextCreateWith: number | null = null;
 
-  create(body: { target: string; locations: GlobalpingLocation[] }): { status: number; json: unknown } {
+  create(body: { target: string; locations: GlobalpingLocation[]; measurementOptions?: unknown }): { status: number; json: unknown } {
     this.createCalls += 1;
     if (this.failNextCreateWith !== null) {
       const status = this.failNextCreateWith;
@@ -100,7 +101,7 @@ export class FakeNetwork {
       return { status: 422, json: { error: { type: "no_probes_found", message: "No suitable probes supplied." } } };
     }
     const id = randomUUID().replace(/-/g, "").slice(0, 16);
-    this.measurements.set(id, { id, hostname: body.target, probes, createdAt: Date.now() });
+    this.measurements.set(id, { id, hostname: body.target, probes, createdAt: Date.now(), measurementOptions: body.measurementOptions });
     return { status: 202, json: { id, probesCount: probes.length } };
   }
 
@@ -125,6 +126,7 @@ export class FakeNetwork {
         createdAt: new Date(m.createdAt).toISOString(),
         updatedAt: new Date().toISOString(),
         probesCount: m.probes.length,
+        measurementOptions: m.measurementOptions,
         results,
       },
     };

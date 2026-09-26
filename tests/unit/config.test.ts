@@ -31,9 +31,35 @@ describe("getConfig", () => {
     });
   });
 
-  it("still requires the database URL and secret, naming them in the error", () => {
+  it("runs without a database (quick-check mode) and needs no secret then", () => {
     Object.assign(process.env, { DATABASE_URL: "", IP_HASH_SECRET: "" });
     resetConfigForTests();
-    expect(() => getConfig()).toThrow(/DATABASE_URL.*IP_HASH_SECRET|IP_HASH_SECRET.*DATABASE_URL/);
+    expect(getConfig().DATABASE_URL).toBeUndefined();
+  });
+
+  it("requires IP_HASH_SECRET once a database is configured", () => {
+    Object.assign(process.env, { DATABASE_URL: "postgres://u:p@db/x", IP_HASH_SECRET: "" });
+    resetConfigForTests();
+    expect(() => getConfig()).toThrow(/IP_HASH_SECRET is required when DATABASE_URL is set/);
+  });
+
+  it("trusts proxy headers by default on Vercel only", () => {
+    const vercel = process.env.VERCEL;
+    try {
+      Object.assign(process.env, { DATABASE_URL: "", TRUST_PROXY_HEADERS: "" });
+      process.env.VERCEL = "1";
+      resetConfigForTests();
+      expect(getConfig().TRUST_PROXY_HEADERS).toBe(true);
+      delete process.env.VERCEL;
+      resetConfigForTests();
+      expect(getConfig().TRUST_PROXY_HEADERS).toBe(false);
+      process.env.VERCEL = "1";
+      process.env.TRUST_PROXY_HEADERS = "false";
+      resetConfigForTests();
+      expect(getConfig().TRUST_PROXY_HEADERS).toBe(false);
+    } finally {
+      if (vercel === undefined) delete process.env.VERCEL;
+      else process.env.VERCEL = vercel;
+    }
   });
 });

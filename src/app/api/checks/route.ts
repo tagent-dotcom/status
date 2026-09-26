@@ -1,8 +1,10 @@
 import type { NextRequest } from "next/server";
 import { createCheck } from "@/lib/checks";
 import { clientIp, hashIp } from "@/lib/client-ip";
-import { getDeps } from "@/lib/deps";
+import { hasDatabase } from "@/lib/config";
+import { getDeps, getQuickDeps } from "@/lib/deps";
 import { AppError, errorResponse } from "@/lib/errors";
+import { createQuickCheck } from "@/lib/quick-check";
 
 const MAX_BODY_BYTES = 16 * 1024;
 
@@ -33,7 +35,6 @@ async function readBodyLimited(request: NextRequest, max: number): Promise<strin
  */
 export async function POST(request: NextRequest) {
   try {
-    const deps = getDeps();
     const text = await readBodyLimited(request, MAX_BODY_BYTES);
 
     let body: unknown;
@@ -47,8 +48,15 @@ export async function POST(request: NextRequest) {
     }
     const { url, locations } = body as { url?: unknown; locations?: unknown };
 
-    const clientHash = hashIp(clientIp(request.headers, deps.config.TRUST_PROXY_HEADERS), deps.config.IP_HASH_SECRET);
-    const result = await createCheck(deps, { url, locations, clientHash });
+    let result: { checkId: string; hostname: string; reused: boolean };
+    if (hasDatabase()) {
+      const deps = getDeps();
+      const ip = clientIp(request.headers, deps.config.TRUST_PROXY_HEADERS);
+      result = await createCheck(deps, { url, locations, clientHash: hashIp(ip, deps.config.IP_HASH_SECRET as string) });
+    } else {
+      const deps = getQuickDeps();
+      result = await createQuickCheck(deps, { url, locations, clientKey: clientIp(request.headers, deps.config.TRUST_PROXY_HEADERS) });
+    }
     return Response.json(result, {
       status: result.reused ? 200 : 201,
       headers: { "Cache-Control": "no-store", Location: `/api/checks/${result.checkId}` },

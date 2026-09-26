@@ -41,7 +41,8 @@ export interface CheckView {
   hostname: string;
   targetUrl: string;
   status: CheckStatus;
-  locationRequest: LocationRequest;
+  /** null for database-less quick checks, where the original request isn't kept. */
+  locationRequest: LocationRequest | null;
   requestedProbes: number;
   probesCount: number | null;
   createdAt: string;
@@ -84,7 +85,7 @@ function dedupeKey(target: Target, request: LocationRequest): string {
   return createHash("sha256").update(`${target.url}\n${canonicalLocationKey(request)}`).digest("hex");
 }
 
-function upstreamToAppError(error: GlobalpingError): AppError {
+export function upstreamToAppError(error: GlobalpingError): AppError {
   switch (error.kind) {
     case "rate_limited":
       return new AppError(
@@ -102,20 +103,32 @@ function upstreamToAppError(error: GlobalpingError): AppError {
   }
 }
 
-export async function createCheck(deps: Deps, input: CreateCheckInput): Promise<CreateCheckResult> {
-  const { sql, config, globalping } = deps;
-
-  if (typeof input.url !== "string") throw new AppError("invalid_target", 400, "Enter a website address.");
-  const parsedTarget = parseTarget(input.url);
+/** Validates the user's URL and location request, throwing user-facing errors. */
+export function parseCheckRequest(url: unknown, locations: unknown): { target: Target; request: LocationRequest } {
+  if (typeof url !== "string") throw new AppError("invalid_target", 400, "Enter a website address.");
+  const parsedTarget = parseTarget(url);
   if (!parsedTarget.ok) throw new AppError("invalid_target", 400, parsedTarget.message);
-  const target = parsedTarget.target;
 
-  const parsedLocations = locationRequestSchema.safeParse(input.locations ?? { mode: "worldwide" });
+  const parsedLocations = locationRequestSchema.safeParse(locations ?? { mode: "worldwide" });
   if (!parsedLocations.success) {
     const first = parsedLocations.error.issues[0];
     throw new AppError("invalid_locations", 400, first ? first.message : "Invalid locations.");
   }
-  const request = dedupeLocations(parsedLocations.data);
+  return { target: parsedTarget.target, request: dedupeLocations(parsedLocations.data) };
+}
+
+/** Refuses hostnames that resolve to private addresses (SSRF defence). */
+export async function assertSafeTarget(deps: Pick<Deps, "config" | "dnsSafety">, hostname: string): Promise<void> {
+  if (deps.config.UNSAFE_SKIP_DNS_CHECK) return;
+  const safety = await (deps.dnsSafety ?? checkDnsSafety)(hostname);
+  if (!safety.ok) {
+    throw new AppError("private_address", 400, "This domain points to a private network address and can't be checked.");
+  }
+}
+
+export async function createCheck(deps: Deps, input: CreateCheckInput): Promise<CreateCheckResult> {
+  const { sql, config, globalping } = deps;
+  const { target, request } = parseCheckRequest(input.url, input.locations);
 
   const key = dedupeKey(target, request);
   const bucket = Math.floor(Date.now() / 1000 / config.CHECK_DEDUPE_SECONDS);
@@ -129,12 +142,7 @@ export async function createCheck(deps: Deps, input: CreateCheckInput): Promise<
 
   // After the dedupe lookup: a reused check already passed this, and during a traffic spike we
   // must not do thousands of DNS lookups for requests that cost nothing.
-  if (!config.UNSAFE_SKIP_DNS_CHECK) {
-    const safety = await (deps.dnsSafety ?? checkDnsSafety)(target.hostname);
-    if (!safety.ok) {
-      throw new AppError("private_address", 400, "This domain points to a private network address and can't be checked.");
-    }
-  }
+  await assertSafeTarget(deps, target.hostname);
 
   const minute = await consume(sql, `client:${input.clientHash}:m`, 60, config.RATE_LIMIT_PER_MINUTE);
   if (!minute.allowed) {
@@ -232,8 +240,9 @@ async function failCheck(sql: Sql, id: string, code: string, message: string): P
   `;
 }
 
-function classifyAll(measurement: GlobalpingMeasurement, row: CheckRow): ProbeResult[] {
-  const url = new URL(row.target_url);
+/** Classifies every finished test in a measurement of `targetUrl`. */
+export function classifyMeasurement(measurement: GlobalpingMeasurement, targetUrl: string): ProbeResult[] {
+  const url = new URL(targetUrl);
   const protocol = url.protocol === "http:" ? "http" : "https";
   return measurement.results
     .map((item) => classifyResult(item, url.hostname, protocol))
@@ -245,7 +254,7 @@ function classifyAll(measurement: GlobalpingMeasurement, row: CheckRow): ProbeRe
  * that both saw "finished" race on it, and only the winner inserts rows.
  */
 async function finalizeCheck(sql: Sql, row: CheckRow, measurement: GlobalpingMeasurement): Promise<void> {
-  const results = classifyAll(measurement, row);
+  const results = classifyMeasurement(measurement, row.target_url);
   const finishedAt = new Date(measurement.updatedAt);
   const checkedAt = Number.isNaN(finishedAt.getTime()) ? new Date() : finishedAt;
 
@@ -444,7 +453,7 @@ export async function getCheck(deps: Pick<Deps, "sql" | "globalping">, id: strin
         } else if (age > PENDING_TIMEOUT_MS) {
           await failCheck(sql, id, "timeout", "The measurement took too long to finish. Please run it again.");
         } else {
-          await sql`UPDATE checks SET partial_results = ${sql.json(classifyAll(measurement, row) as never)} WHERE id = ${id} AND status = 'pending'`;
+          await sql`UPDATE checks SET partial_results = ${sql.json(classifyMeasurement(measurement, row.target_url) as never)} WHERE id = ${id} AND status = 'pending'`;
         }
       } catch (error) {
         if (error instanceof GlobalpingError && error.kind === "not_found") {

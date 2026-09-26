@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { hasDatabase } from "@/lib/config";
 import { getDeps } from "@/lib/deps";
 import { AppError, errorResponse } from "@/lib/errors";
 import { getHistory, historyQuerySchema } from "@/lib/history";
@@ -10,6 +11,7 @@ import { parseHostnameSlug } from "@/lib/target";
  */
 export async function GET(request: NextRequest, ctx: RouteContext<"/api/sites/[hostname]/history">) {
   try {
+    if (!hasDatabase()) throw new AppError("not_found", 404, "History isn't enabled on this server.");
     const { hostname: slug } = await ctx.params;
     const hostname = parseHostnameSlug(slug);
     if (!hostname) throw new AppError("not_found", 404, "Unknown site.");

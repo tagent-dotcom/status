@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { notFound, permanentRedirect } from "next/navigation";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 import { StatusPageClient } from "@/components/status-page-client";
 import { getCheck, getLatestFinishedCheck, type CheckView } from "@/lib/checks";
+import { hasDatabase } from "@/lib/config";
 import { getDeps } from "@/lib/deps";
 import { getSiteSummary, isIndexable } from "@/lib/history";
 import { SITE_NAME } from "@/lib/site";
@@ -29,6 +30,7 @@ export async function generateMetadata(props: PageProps<"/status/[hostname]">): 
   const hostname = parseHostnameSlug(slug);
   if (!hostname) return { title: "Not found", robots: { index: false } };
   await connection();
+  if (!hasDatabase()) return { robots: { index: false } };
   const [site, latest] = await Promise.all([loadSite(hostname), loadLatest(hostname)]);
   const indexable = site !== null && isIndexable(site);
   const title = `Is ${hostname} down? Live status worldwide`;
@@ -48,6 +50,8 @@ export default async function StatusPage(props: PageProps<"/status/[hostname]">)
   const search = await props.searchParams;
   const hostname = parseHostnameSlug(slug);
   if (!hostname) notFound();
+  // Without a database there are no per-site pages: send people to the single-page checker.
+  if (!hasDatabase()) redirect(`/?url=${encodeURIComponent(hostname)}`);
 
   if (decodeURIComponent(slug) !== hostname) {
     const qs = new URLSearchParams();

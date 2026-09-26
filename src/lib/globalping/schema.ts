@@ -94,6 +94,13 @@ export const measurementSchema = z.looseObject({
   createdAt: z.string(),
   updatedAt: z.string(),
   probesCount: z.number().int(),
+  // Echo of the request options; lets a stateless deployment rebuild the checked URL.
+  measurementOptions: z
+    .looseObject({
+      protocol: z.string().optional(),
+      request: z.looseObject({ path: z.string().optional(), query: z.string().optional() }).optional(),
+    })
+    .optional(),
   results: z.array(z.looseObject({ probe: probeSchema, result: httpTestResultSchema })),
 });
 

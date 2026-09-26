@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { hasDatabase } from "@/lib/config";
 import { getSql } from "@/lib/db/client";
 import { listIndexableSites } from "@/lib/history";
 import { siteUrl } from "@/lib/site";
@@ -13,7 +14,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext<"/sitemaps/[p
   const page = Number(match[1]);
 
   const base = siteUrl();
-  const sites = await listIndexableSites(getSql(), page * URLS_PER_SITEMAP, URLS_PER_SITEMAP);
+  const sites = hasDatabase() ? await listIndexableSites(getSql(), page * URLS_PER_SITEMAP, URLS_PER_SITEMAP) : [];
   if (sites.length === 0 && page > 0) return new Response("Not found", { status: 404 });
 
   const entries: Array<{ loc: string; lastmod?: Date }> = sites.map((s) => ({ loc: `${base}/status/${s.hostname}`, lastmod: s.lastCheckedAt }));

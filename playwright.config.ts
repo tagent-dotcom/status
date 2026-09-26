@@ -44,5 +44,17 @@ export default defineConfig({
         SITE_URL: "https://worldstatus.example",
       },
     },
+    {
+      // Same build with no database: single-page quick-check mode.
+      command: `npx next start -p ${port + 1}`,
+      url: `http://localhost:${port + 1}/`,
+      reuseExistingServer: true,
+      env: {
+        GLOBALPING_API_URL: "http://127.0.0.1:4010",
+        RATE_LIMIT_PER_MINUTE: "100",
+        RATE_LIMIT_PER_HOUR: "1000",
+        SITE_URL: "https://worldstatus.example",
+      },
+    },
   ],
 });

@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { HomeCheckForm } from "@/components/home-check-form";
+import { QuickCheck } from "@/components/quick-check";
+import { hasDatabase } from "@/lib/config";
 import { getSql } from "@/lib/db/client";
 import { listRecentlyCheckedSites } from "@/lib/history";
 import { SITE_TAGLINE } from "@/lib/site";
 
 async function recentSites(): Promise<string[]> {
+  if (!hasDatabase()) return [];
   try {
     return (await listRecentlyCheckedSites(getSql(), 12)).map((s) => s.hostname);
   } catch (error) {
@@ -15,7 +18,7 @@ async function recentSites(): Promise<string[]> {
   }
 }
 
-const STEPS = [
+const STEPS: Array<{ title: string; body: string; requiresDatabase?: boolean }> = [
   {
     title: "Real networks, not just data centers",
     body: "Each check runs from probes on home broadband, mobile and data-center connections in the countries, cities and ISPs you choose.",
@@ -29,6 +32,7 @@ const STEPS = [
     body: "Down in one country but up elsewhere? Failing on one ISP only? A private DNS answer or a block page? The results say so in plain language.",
   },
   {
+    requiresDatabase: true,
     title: "History you can filter",
     body: "Every result is kept. Filter a site's history by country, city, ISP, network type and date to see when and where problems happen.",
   },
@@ -36,6 +40,7 @@ const STEPS = [
 
 export default async function Home() {
   await connection();
+  const persistent = hasDatabase();
   const recent = await recentSites();
 
   return (
@@ -46,10 +51,15 @@ export default async function Home() {
           Check any website from real internet connections around the world. Find out whether it&apos;s down for everyone, blocked in one
           country, or failing on a single ISP, and why.
         </p>
-        <div className="rounded-xl border border-line bg-surface p-4 text-left shadow-sm sm:p-5">
-          <HomeCheckForm />
-        </div>
+        {persistent ? (
+          <div className="rounded-xl border border-line bg-surface p-4 text-left shadow-sm sm:p-5">
+            <HomeCheckForm />
+          </div>
+        ) : null}
       </section>
+
+      {/* Without a database, results appear right here (full width) instead of on /status pages. */}
+      {!persistent && <QuickCheck />}
 
       {recent.length > 0 && (
         <section aria-labelledby="recent-heading" className="space-y-3">
@@ -73,17 +83,19 @@ export default async function Home() {
           How it works
         </h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          {STEPS.map((s) => (
+          {STEPS.filter((s) => persistent || !s.requiresDatabase).map((s) => (
             <div key={s.title} className="rounded-lg border border-line bg-surface p-4">
               <h3 className="font-medium text-ink">{s.title}</h3>
               <p className="mt-1 text-sm text-ink-2">{s.body}</p>
             </div>
           ))}
         </div>
+        {persistent && (
         <p className="text-sm text-ink-2">
           Every site gets a public page at <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-ink">/status/example.com</code> that
           anyone can open, share and re-check.
         </p>
+        )}
       </section>
     </div>
   );

@@ -13,6 +13,19 @@ map, per-probe details and a filterable history (country, city, ISP, network typ
 This is **Phase 1 (MVP)**: on-demand checks, diagnosis, public status pages and history.
 See [Roadmap](#roadmap) for what comes next.
 
+### Two modes
+
+| | **Quick-check mode** (no `DATABASE_URL`) | **Full mode** (with Postgres) |
+| --- | --- | --- |
+| Check any site worldwide, map, diagnosis | ✅ on the home page | ✅ |
+| Shareable result link | ✅ `/?check=<id>` (while Globalping keeps the measurement) | ✅ |
+| `/status/<domain>` pages, history, filters | – (redirects to home) | ✅ |
+| SEO pages + sitemap | – | ✅ |
+| Rate limits | per server instance (best effort) | shared across instances |
+| Setup | just deploy | Postgres + `IP_HASH_SECRET` + `npm run db:migrate` |
+
+Start in quick-check mode and add a database later; nothing else changes.
+
 ---
 
 ## How it works
@@ -131,15 +144,15 @@ details.
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Postgres connection string (required) |
-| `IP_HASH_SECRET` | Secret for hashing client IPs, ≥16 chars (required) |
+| `DATABASE_URL` | Postgres connection string. Optional: without it the app runs in quick-check mode |
+| `IP_HASH_SECRET` | Secret for hashing client IPs, ≥16 chars (required when `DATABASE_URL` is set) |
 | `SITE_URL` | Public origin for canonical URLs, robots and sitemap |
 | `GLOBALPING_TOKEN` | Globalping API token (strongly recommended) |
 | `GLOBALPING_HOURLY_PROBE_BUDGET` | Max probes/hour across all instances |
 | `MAX_PROBES_PER_CHECK` | Probes per check, spread across the chosen places |
 | `CHECK_DEDUPE_SECONDS` | Window in which identical checks are shared |
 | `RATE_LIMIT_PER_MINUTE` / `RATE_LIMIT_PER_HOUR` | Per-client limits for starting checks |
-| `TRUST_PROXY_HEADERS` | Trust `X-Forwarded-For` etc. (only behind a proxy that sets them) |
+| `TRUST_PROXY_HEADERS` | Trust `X-Forwarded-For` etc. (only behind a proxy that sets them). Defaults to `true` on Vercel |
 | `RESULT_RETENTION_DAYS` | Retention used by `npm run db:prune` |
 
 ## Scripts

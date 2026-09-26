@@ -10,6 +10,7 @@ const globalForDb = globalThis as unknown as { __statusSql?: Sql };
 export function getSql(): Sql {
   if (!globalForDb.__statusSql) {
     const config = getConfig();
+    if (!config.DATABASE_URL) throw new Error("DATABASE_URL is not set; this feature needs a database.");
     globalForDb.__statusSql = postgres(config.DATABASE_URL, {
       max: config.DATABASE_POOL_MAX,
       idle_timeout: 30,
