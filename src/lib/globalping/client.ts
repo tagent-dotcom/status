@@ -81,7 +81,12 @@ export class GlobalpingClient {
     let message = `Probe network responded with HTTP ${response.status}`;
     try {
       const parsed = apiErrorSchema.safeParse(await response.json());
-      if (parsed.success) message = parsed.data.error.message;
+      if (parsed.success) {
+        const { message: base, params } = parsed.data.error;
+        // Validation errors name the offending fields in `params`; keep them for diagnosis.
+        const details = params ? Object.entries(params).map(([k, v]) => `${k}: ${v}`).join("; ") : "";
+        message = details ? `${base} (${details})` : base;
+      }
     } catch {
       // Non-JSON error body; keep the generic message.
     }
@@ -123,7 +128,8 @@ export class GlobalpingClient {
           // 10 KB of body lets us spot ISP block pages.
           method: "GET",
           path: req.path,
-          query: req.query,
+          // Globalping validates strings with Joi, which rejects "" — omit empty values.
+          ...(req.query ? { query: req.query } : {}),
         },
       },
     };

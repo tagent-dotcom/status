@@ -96,6 +96,27 @@ export class FakeNetwork {
       this.failNextCreateWith = null;
       return { status, json: { error: { type: "error", message: `Simulated ${status}` } } };
     }
+    // Mirror Globalping's Joi validation for the fields we send: strings may not be empty,
+    // and the sum of per-location limits is capped (50 for anonymous callers).
+    const request = (body.measurementOptions as { request?: Record<string, unknown> } | undefined)?.request ?? {};
+    for (const [key, value] of Object.entries(request)) {
+      if (value === "") {
+        return {
+          status: 400,
+          json: {
+            error: {
+              type: "validation_error",
+              message: "Parameter validation failed.",
+              params: { [`measurementOptions.request.${key}`]: `"measurementOptions.request.${key}" is not allowed to be empty` },
+            },
+          },
+        };
+      }
+    }
+    const total = body.locations.reduce((sum, l) => sum + (l.limit ?? 1), 0);
+    if (total > 50) {
+      return { status: 400, json: { error: { type: "validation_error", message: "Parameter validation failed.", params: { locations: "sum of limits must be <= 50" } } } };
+    }
     const probes = selectProbes(body.locations);
     if (probes.length === 0) {
       return { status: 422, json: { error: { type: "no_probes_found", message: "No suitable probes supplied." } } };
