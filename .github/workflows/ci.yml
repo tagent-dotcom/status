@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: status
+          POSTGRES_PASSWORD: status
+          POSTGRES_DB: status_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U status"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://status:status@localhost:5432/status_test
+      E2E_DATABASE_URL: postgres://status:status@localhost:5432/status_e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run build
+      - name: Prepare end-to-end database
+        run: |
+          PGPASSWORD=status psql -h localhost -U status -d status_test -c "CREATE DATABASE status_e2e"
+          DATABASE_URL=$E2E_DATABASE_URL IP_HASH_SECRET=ci-secret-0123456789 npm run db:migrate
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/

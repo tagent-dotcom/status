@@ -1,0 +1,48 @@
+# Local production-like stack: Postgres, a one-off migration job, and the app.
+#   IP_HASH_SECRET=$(openssl rand -hex 32) docker compose up --build
+# Optional: GLOBALPING_TOKEN=... for higher probe limits.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: status
+      POSTGRES_PASSWORD: status
+      POSTGRES_DB: status
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U status"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      target: builder
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://status:status@db:5432/status
+      IP_HASH_SECRET: ${IP_HASH_SECRET:?Set IP_HASH_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      target: runner
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://status:status@db:5432/status
+      IP_HASH_SECRET: ${IP_HASH_SECRET:?Set IP_HASH_SECRET}
+      SITE_URL: ${SITE_URL:-http://localhost:3000}
+      GLOBALPING_TOKEN: ${GLOBALPING_TOKEN:-}
+      GLOBALPING_HOURLY_PROBE_BUDGET: ${GLOBALPING_HOURLY_PROBE_BUDGET:-250}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
