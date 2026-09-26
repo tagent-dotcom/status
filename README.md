@@ -84,7 +84,7 @@ Browser ──POST /api/checks──▶ Next.js API ──▶ Globalping API (pr
 
 ## Getting started
 
-Requirements: Node.js 20.9+ (22 recommended) and PostgreSQL 14+.
+Requirements: Node.js 22 and PostgreSQL 14+.
 
 ```bash
 npm install
