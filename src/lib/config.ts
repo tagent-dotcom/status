@@ -43,7 +43,12 @@ let cached: Config | undefined;
 
 export function getConfig(): Config {
   if (cached) return cached;
-  const parsed = schema.safeParse(process.env);
+  // Hosting dashboards often create variables with blank values. Treat blank as unset so
+  // optional settings fall back to their defaults instead of failing validation.
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([, value]) => value !== undefined && value.trim() !== ""),
+  );
+  const parsed = schema.safeParse(env);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Invalid configuration: ${issues}`);
